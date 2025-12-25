@@ -1,3 +1,11 @@
-if (import.meta.main) {
-  console.log('Hello, Project-Name!');
-}
+export {
+  bold,
+  code,
+  image,
+  inline,
+  italic,
+  link,
+  ProseWriter,
+  strike,
+  write,
+} from './prose-writer';

@@ -1,20 +1,48 @@
 {
   "name": "prose-writer",
-  "version": "0.0.1",
-  "private": true,
+  "version": "0.1.0",
+  "description": "A chainable TypeScript library for building formatted text and markdown strings",
+  "keywords": [
+    "markdown",
+    "prose",
+    "text",
+    "template",
+    "prompt",
+    "llm",
+    "ai",
+    "chainable",
+    "builder"
+  ],
+  "license": "MIT",
+  "author": "",
   "type": "module",
   "exports": {
-    "bun": "./dist/index.js",
-    "node": "./dist/index.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./dist/index.js",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
   },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "build": "bun build --target=bun --outdir=dist --minify --sourcemap=external ./src/index.ts",
+    "build": "bun build --target=bun --outdir=dist --minify --sourcemap=external ./src/index.ts && bun run build:types",
+    "build:types": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist coverage .eslintcache",
     "dev": "bun --watch run src/index.ts",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "prepare": "husky",
+    "prepublishOnly": "bun run validate && bun run build",
     "start": "bun run src/index.ts",
     "test": "bun test",
     "test:coverage": "bun test --coverage",
@@ -37,10 +65,7 @@
       "sort-package-json"
     ]
   },
-  "dependencies": {
-    "change-case": "^5.4.4",
-    "zod": "^4.2.1"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",
     "@eslint/js": "^9.39.2",
@@ -50,6 +75,7 @@
     "@typescript-eslint/eslint-plugin": "^8.50.0",
     "@typescript-eslint/parser": "^8.50.0",
     "chalk": "^5.6.2",
+    "change-case": "^5.4.4",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "eslint-import-resolver-typescript": "^4.4.4",
