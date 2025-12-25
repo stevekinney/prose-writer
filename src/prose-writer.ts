@@ -38,7 +38,7 @@ export class ProseWriter {
 
   constructor(content?: string) {
     if (content !== undefined) {
-      this.parts.push(content + '\n');
+      this.parts.push(content.endsWith('\n') ? content : content + '\n');
     }
   }
 
@@ -291,7 +291,10 @@ export class ProseWriter {
    * Enables composition of prompts from reusable pieces.
    */
   append(writer: ProseWriter): this {
-    this.parts.push(writer.toString());
+    const content = writer.toString();
+    if (content.length > 0) {
+      this.parts.push(this.padding + content);
+    }
     return this;
   }
 
@@ -366,8 +369,8 @@ export class ProseWriter {
   /**
    * Appends inline code (wrapped in backticks).
    */
-  code(content: string | number | boolean): this {
-    this.parts.push(code(String(content)));
+  code(content: string | number | boolean | ProseWriter): this {
+    this.parts.push(this.padding + code(content) + '\n');
     return this;
   }
 
@@ -456,7 +459,7 @@ export class ProseWriter {
    * Appends bold text.
    */
   bold(content: string | number | boolean | ProseWriter): this {
-    this.parts.push(bold(content));
+    this.parts.push(this.padding + bold(content) + '\n');
     return this;
   }
 
@@ -464,7 +467,7 @@ export class ProseWriter {
    * Appends italic text.
    */
   italic(content: string | number | boolean | ProseWriter): this {
-    this.parts.push(italic(content));
+    this.parts.push(this.padding + italic(content) + '\n');
     return this;
   }
 
@@ -472,7 +475,7 @@ export class ProseWriter {
    * Appends strikethrough text.
    */
   strike(content: string | number | boolean | ProseWriter): this {
-    this.parts.push(strike(content));
+    this.parts.push(this.padding + strike(content) + '\n');
     return this;
   }
 
@@ -488,7 +491,7 @@ export class ProseWriter {
    * Appends a markdown link.
    */
   link(text: string | ProseWriter, url: string): this {
-    this.parts.push(link(text, url));
+    this.parts.push(this.padding + link(text, url) + '\n');
     return this;
   }
 
@@ -496,7 +499,7 @@ export class ProseWriter {
    * Appends a markdown image.
    */
   image(alt: string | ProseWriter, url: string): this {
-    this.parts.push(image(alt, url));
+    this.parts.push(this.padding + image(alt, url) + '\n');
     return this;
   }
 
@@ -564,7 +567,7 @@ export class ProseWriter {
     }
 
     // Fallback for any other types - use JSON stringify
-    return JSON.stringify(data);
+    return JSON.stringify(data) ?? 'null';
   }
 
   /**
@@ -756,7 +759,9 @@ export class ProseWriter {
         return lb;
       },
       comment: (content: string) => {
-        items.push(`<!-- ${content} -->`);
+        const sub = new ProseWriter();
+        sub.comment(content);
+        items.push(sub);
         return lb;
       },
       bold,

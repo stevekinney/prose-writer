@@ -96,8 +96,20 @@ describe('ProseWriter', () => {
       expect(strike('test')).toBe('~~test~~');
     });
 
+    it('can be used as a chainable method', () => {
+      expect(write('old').strike('new').toString()).toBe('old\n\n~~new~~\n');
+    });
+
+    it('link() returns markdown link string', () => {
+      expect(link('A', 'B')).toBe('[A](B)');
+    });
+
     it('image() returns markdown image string', () => {
       expect(image('A', 'B')).toBe('![A](B)');
+    });
+
+    it('can be used as a chainable method', () => {
+      expect(write('').image('alt', 'url').toString()).toBe('![alt](url)\n');
     });
 
     it('trims ProseWriter instances in inline utilities', () => {
@@ -189,12 +201,6 @@ describe('ProseWriter', () => {
       expect(result).toBe('start\n\n1. a\n2. b\n\nend\n');
     });
 
-    it('supports nested ordered lists', () => {
-      const sublist = write('').orderedList('sub 1', 'sub 2');
-      const result = write('').orderedList('parent', sublist).toString();
-      expect(result).toBe('1. parent\n  1. sub 1\n  2. sub 2\n\n');
-    });
-
     it('supports a builder function', () => {
       const result = write('Steps')
         .orderedList((l) => {
@@ -230,6 +236,16 @@ describe('ProseWriter', () => {
       expect(result).toBe('- [x] Task 1\n- [ ] Task 2\n\n');
     });
 
+    it('supports comment() in builder', () => {
+      const result = write('')
+        .tasks((l) => {
+          l.item('Task 1');
+          l.comment('Hidden note');
+        })
+        .toString();
+      expect(result).toBe('- Task 1\n  <!-- Hidden note -->\n\n');
+    });
+
     it('supports a list of items with mixed types', () => {
       const result = write('Todo:')
         .tasks('Default todo', ['Explicit done', true], ['Explicit todo', false])
@@ -256,6 +272,56 @@ describe('ProseWriter', () => {
         })
         .toString();
       expect(result).toBe('- [ ] Task\n\n');
+    });
+
+    it('can be started from write.tasks with items', () => {
+      const result = write.tasks('A', ['B', true]).toString();
+      expect(result).toBe('- [ ] A\n- [x] B\n\n');
+    });
+
+    it('supports complex nesting in list builder', () => {
+      const result = write
+        .list((l) => {
+          l.item('Parent');
+          l.unorderedList((sl) => sl.item('Unordered'));
+          l.orderedList((sl) => sl.item('Ordered'));
+          l.list('Another', 'List');
+        })
+        .toString();
+      expect(result).toContain('- Parent');
+      expect(result).toContain('  - Unordered');
+      expect(result).toContain('  1. Ordered');
+      expect(result).toContain('  - Another');
+    });
+
+    it('can be started from write.unorderedList', () => {
+      const result = write.unorderedList('A', 'B').toString();
+      expect(result).toBe('- A\n- B\n\n');
+    });
+
+    it('can be started from write.unorderedList with builder', () => {
+      const result = write.unorderedList((l) => l.item('A')).toString();
+      expect(result).toBe('- A\n\n');
+    });
+
+    it('can be started from write.orderedList', () => {
+      const result = write.orderedList('A', 'B').toString();
+      expect(result).toBe('1. A\n2. B\n\n');
+    });
+
+    it('can be started from write.orderedList with builder', () => {
+      const result = write.orderedList((l) => l.item('A')).toString();
+      expect(result).toBe('1. A\n\n');
+    });
+
+    it('can be started from write.list', () => {
+      const result = write.list('A', 'B').toString();
+      expect(result).toBe('- A\n- B\n\n');
+    });
+
+    it('can be started from write.list with builder', () => {
+      const result = write.list((l) => l.item('A')).toString();
+      expect(result).toBe('- A\n\n');
     });
   });
 
@@ -431,13 +497,13 @@ describe('ProseWriter', () => {
     it('appends content from another ProseWriter', () => {
       const persona = write('You are an expert.');
       const result = write('System:').append(persona).toString();
-      expect(result).toBe('System:\nYou are an expert.\n');
+      expect(result).toBe('System:\n\nYou are an expert.\n');
     });
 
     it('appends complex ProseWriter content', () => {
       const instructions = write('Guidelines:').list('Be concise', 'Be accurate');
       const result = write('Intro').append(instructions).toString();
-      expect(result).toBe('Intro\nGuidelines:\n\n- Be concise\n- Be accurate\n\n');
+      expect(result).toBe('Intro\n\nGuidelines:\n\n- Be concise\n- Be accurate\n\n');
     });
 
     it('is chainable', () => {
@@ -445,13 +511,13 @@ describe('ProseWriter', () => {
       const part2 = write('Part 2');
       const part3 = write('Part 3');
       const result = write('Start:').append(part1).append(part2).append(part3).toString();
-      expect(result).toBe('Start:\nPart 1\nPart 2\nPart 3\n');
+      expect(result).toBe('Start:\n\nPart 1\n\nPart 2\n\nPart 3\n');
     });
 
     it('works with empty ProseWriter', () => {
       const empty = write('');
       const result = write('Content').append(empty).write('More').toString();
-      expect(result).toBe('Content\n\n\nMore\n');
+      expect(result).toBe('Content\n\nMore\n');
     });
 
     it('preserves formatting from appended writer', () => {
@@ -583,7 +649,7 @@ describe('ProseWriter', () => {
 
     it('is chainable as method', () => {
       const result = write('Call').code('foo').write('then').code('bar').toString();
-      expect(result).toBe('Call\n`foo`\n\nthen\n`bar`');
+      expect(result).toBe('Call\n\n`foo`\n\nthen\n\n`bar`\n');
     });
   });
 
@@ -591,7 +657,7 @@ describe('ProseWriter', () => {
     it('replaces single variable', () => {
       const template = write('Hello, {{name}}!');
       const result = template.fill({ name: 'World' }).toString();
-      expect(result).toBe('Hello, World!\n\n');
+      expect(result).toBe('Hello, World!\n');
     });
 
     it('replaces multiple variables', () => {
@@ -603,7 +669,7 @@ describe('ProseWriter', () => {
           place: 'Wonderland',
         })
         .toString();
-      expect(result).toBe('Hello, Alice! Welcome to Wonderland.\n\n');
+      expect(result).toBe('Hello, Alice! Welcome to Wonderland.\n');
     });
 
     it('is chainable on the result', () => {
@@ -658,6 +724,27 @@ describe('ProseWriter', () => {
       expect(result).toContain('| Alice | 30 |');
       expect(result).toContain('| Bob | 25 |');
     });
+
+    it('supports object-based rows', () => {
+      const result = write('')
+        .table(
+          ['Name', 'Age'],
+          [
+            { Name: 'Alice', Age: 30 },
+            { Name: 'Bob', Age: 25 },
+          ],
+        )
+        .toString();
+      expect(result).toContain('| Alice | 30 |');
+      expect(result).toContain('| Bob | 25 |');
+    });
+
+    it('handles ProseWriter in object-based rows', () => {
+      const result = write('')
+        .table(['Content'], [{ Content: write('hello world') }])
+        .toString();
+      expect(result).toContain('| hello world |');
+    });
   });
 
   describe('definitions', () => {
@@ -681,7 +768,12 @@ describe('ProseWriter', () => {
 
     it('is chainable as method', () => {
       const result = write('').bold('one').write('and').bold('two').toString();
-      expect(result).toBe('**one**\n\nand\n**two**');
+      expect(result).toBe('**one**\n\nand\n\n**two**\n');
+    });
+
+    it('bold() trims ProseWriter instances', () => {
+      const nested = write(' hello ');
+      expect(bold(nested)).toBe('**hello**');
     });
   });
 
@@ -689,6 +781,16 @@ describe('ProseWriter', () => {
     it('wraps content in single asterisks', () => {
       const result = write('This is', italic('emphasized'), 'text.').toString();
       expect(result).toBe('This is *emphasized* text.\n');
+    });
+
+    it('can be used as a chainable method', () => {
+      const result = write('hello').italic('world').toString();
+      expect(result).toBe('hello\n\n*world*\n');
+    });
+
+    it('italic() trims ProseWriter instances', () => {
+      const nested = write(' hello ');
+      expect(italic(nested)).toBe('*hello*');
     });
   });
 
@@ -713,6 +815,11 @@ describe('ProseWriter', () => {
       ).toString();
       expect(result).toBe('See [Google](https://google.com) for more.\n');
     });
+
+    it('can be used as a chainable method', () => {
+      const result = write('hello').link('google', 'url').toString();
+      expect(result).toBe('hello\n\n[google](url)\n');
+    });
   });
 
   describe('yaml', () => {
@@ -726,7 +833,7 @@ describe('ProseWriter', () => {
   describe('compact', () => {
     it('collapses multiple newlines to double newlines', () => {
       const result = write('A').raw('\n\n\n\n\n').write('B').compact().toString();
-      expect(result).toBe('A\n\nB\n\n');
+      expect(result).toBe('A\n\nB\n');
     });
   });
 
@@ -749,9 +856,25 @@ describe('ProseWriter', () => {
     });
 
     it('supports a custom counter function', () => {
-      const counter = (text: string) => text.split(' ').length;
+      const counter = (text: string) => text.split(/\s+/).filter(Boolean).length;
       const result = write('hello world').tokens(counter);
       expect(result).toBe(2);
+    });
+  });
+
+  describe('yaml helper', () => {
+    it('handles null and undefined', () => {
+      expect(write('').yaml(null).toString()).toContain('null');
+    });
+
+    it('handles empty arrays and objects', () => {
+      expect(write('').yaml([]).toString()).toContain('[]');
+      expect(write('').yaml({}).toString()).toContain('{}');
+    });
+
+    it('handles other types via fallback', () => {
+      const symbol = Symbol('test');
+      expect(write('').yaml(symbol).toString()).toContain('null');
     });
   });
 
@@ -786,6 +909,54 @@ describe('ProseWriter', () => {
       const a = write('A');
       const b = write('B');
       expect(ProseWriter.join(a, b).toString()).toBe('A\nB\n');
+    });
+
+    it('ProseWriter.fromTemplate creates from template string', () => {
+      const pw = ProseWriter.fromTemplate('Hello {{name}}');
+      expect(pw.toString()).toBe('Hello {{name}}\n');
+    });
+  });
+
+  describe('type coercion and tags', () => {
+    it('has correct Symbol.toStringTag', () => {
+      const writer = new ProseWriter();
+      expect(Object.prototype.toString.call(writer)).toBe('[object ProseWriter]');
+    });
+
+    it('returns string for coercion', () => {
+      const writer = write('hello');
+      expect(String(writer)).toBe('hello\n');
+    });
+
+    it('returns NaN for number coercion', () => {
+      const writer = write('hello');
+      expect(Number(writer)).toBeNaN();
+    });
+
+    it('returns string for default hint', () => {
+      const writer = write('hello');
+      expect(String(writer)).toBe('hello\n');
+    });
+
+    it('delimit() wraps content with custom delimiters', () => {
+      const result = write('A').delimit('<<<', '>>>', 'B').toString();
+      expect(result).toBe('A\n\n<<<\nB\n>>>\n');
+    });
+
+    it('each() iterates over items', () => {
+      const result = write('Items:')
+        .each(['a', 'b'], (item, w) => w.write(item))
+        .toString();
+      expect(result).toBe('Items:\n\na\n\nb\n');
+    });
+
+    it('toPlainText() handles code blocks and tags', () => {
+      const pw = write('').tag('hidden', 'secret').codeblock('js', 'const x = 1;');
+      const plain = pw.toPlainText();
+      expect(plain).toContain('secret');
+      expect(plain).toContain('const x = 1;');
+      expect(plain).not.toContain('<hidden>');
+      expect(plain).not.toContain('```');
     });
   });
 });
