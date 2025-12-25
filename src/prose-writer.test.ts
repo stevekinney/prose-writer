@@ -325,6 +325,33 @@ describe('ProseWriter', () => {
     });
   });
 
+  describe('callout', () => {
+    it('creates a NOTE callout', () => {
+      const result = write('').callout('NOTE', 'This is a note').toString();
+      expect(result).toBe('> [!NOTE]\n> This is a note\n\n');
+    });
+
+    it('creates a TIP callout with multiline content', () => {
+      const result = write('intro').callout('TIP', 'First line\nSecond line').toString();
+      expect(result).toBe('intro\n\n> [!TIP]\n> First line\n> Second line\n\n');
+    });
+
+    it('supports a builder function', () => {
+      const result = write('')
+        .callout('WARNING', (w) => {
+          w.write('Be careful!');
+          w.write('This is serious.');
+        })
+        .toString();
+      expect(result).toBe('> [!WARNING]\n> Be careful!\n> \n> This is serious.\n\n');
+    });
+
+    it('can be started from write.callout', () => {
+      const result = write.callout('CAUTION', 'Watch out!').toString();
+      expect(result).toBe('> [!CAUTION]\n> Watch out!\n\n');
+    });
+  });
+
   describe('heading', () => {
     it('creates h1 heading', () => {
       const result = write('intro').heading(1, 'Title').write('content').toString();

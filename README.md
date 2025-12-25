@@ -485,6 +485,55 @@ Output:
 - [ ] First task
 ```
 
+### `.callout(type: 'NOTE' | 'TIP' | 'IMPORTANT' | 'WARNING' | 'CAUTION', content: string | builder)`
+
+Appends a GitHub-style alert (callout). The content can be a string or a builder function.
+
+```typescript
+write('Important Info:').callout('NOTE', 'This is a helpful note.');
+```
+
+Output:
+
+```markdown
+Important Info:
+
+> [!NOTE]
+> This is a helpful note.
+```
+
+Using a builder for complex callouts:
+
+```typescript
+write().callout('WARNING', (w) => {
+  w.write('System maintenance scheduled.');
+  w.list('Date: Sunday', 'Time: 2:00 AM UTC');
+});
+```
+
+Output:
+
+```markdown
+> [!WARNING]
+> System maintenance scheduled.
+>
+> - Date: Sunday
+> - Time: 2:00 AM UTC
+```
+
+You can also start a callout immediately:
+
+```typescript
+const text = write.callout('TIP', 'Use shortcuts to save time.').toString();
+```
+
+Output:
+
+```markdown
+> [!TIP]
+> Use shortcuts to save time.
+```
+
 ### `.separator`
 
 A getter that appends a markdown horizontal rule (`---`). Surrounded by double newlines.

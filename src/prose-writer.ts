@@ -231,6 +231,30 @@ export class ProseWriter {
   }
 
   /**
+   * Appends a GitHub Alert (callout).
+   */
+  callout(
+    type: 'NOTE' | 'TIP' | 'IMPORTANT' | 'WARNING' | 'CAUTION',
+    content: string | ((writer: ProseWriter & InlineUtils) => void),
+  ): this {
+    let contentString: string;
+    if (typeof content === 'function') {
+      const writer = new ProseWriter();
+      content(writer.enhanced);
+      contentString = writer.toString().trimEnd();
+    } else {
+      contentString = content;
+    }
+
+    const lines = contentString.split('\n');
+    const alertLines = [`[!${type.toUpperCase()}]`, ...lines];
+    const alertContent = alertLines.map((line) => `> ${line}`).join('\n');
+
+    this.parts.push(`${this.padding}${alertContent}\n\n`);
+    return this;
+  }
+
+  /**
    * Appends a markdown heading at the specified level.
    */
   heading(level: 1 | 2 | 3 | 4 | 5 | 6, ...content: string[]): this {
@@ -887,6 +911,12 @@ export const write = Object.assign(
           | [string | number | boolean | ProseWriter, boolean]
         )[]),
       );
+    },
+    callout: (
+      type: 'NOTE' | 'TIP' | 'IMPORTANT' | 'WARNING' | 'CAUTION',
+      content: string | ((writer: ProseWriter & InlineUtils) => void),
+    ): ProseWriter => {
+      return new ProseWriter().callout(type, content);
     },
   },
 );
