@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'bun:test';
 
-import type { ListBuilder } from './prose-writer';
+import type { JsonSchemaAdapter, ListBuilder, OutputValidator } from './prose-writer';
 import {
   bold,
   code,
+  createJsonSchemaValidator,
+  createYamlParserAdapter,
   image,
   inline,
   italic,
   link,
   ProseWriter,
   strike,
+  ValidationError,
   write,
 } from './prose-writer';
 
@@ -72,6 +75,49 @@ describe('ProseWriter', () => {
         })
         .toString();
       expect(result).toBe('Hello **World**\n');
+    });
+  });
+
+  describe('safe mode', () => {
+    it('escapes markdown punctuation and XML characters', () => {
+      const result = write.safe('Look <here> & [now] `ok`').toString();
+      expect(result).toBe('Look &lt;here&gt; &amp; \\[now\\] \\`ok\\`\n');
+    });
+
+    it('escapes list markers on new lines', () => {
+      const result = write.safe('Line 1\n- item').toString();
+      expect(result).toBe('Line 1\n\\- item\n');
+    });
+
+    it('preserves trusted templates while sanitizing variables', () => {
+      const template = write.safe.template('Hello, {{name}}!');
+      const result = template.fill({ name: '<Ada>' }).toString();
+      expect(result).toBe('Hello, &lt;Ada&gt;!\n');
+    });
+
+    it('preserves safe inline utilities in builders', () => {
+      const result = write.safe
+        .with((w) => {
+          w.write('Hello', w.bold('World'));
+        })
+        .toString();
+      expect(result).toBe('Hello **World**\n');
+    });
+
+    it('sanitizes tag content', () => {
+      const result = write.safe().tag('context', '<input>').toString();
+      expect(result).toBe('<context>\n&lt;input&gt;\n</context>\n');
+    });
+
+    it('sanitizes links and inline code', () => {
+      const linkResult = write
+        .safe()
+        .link('Click [me]', 'https://example.com/(a b)')
+        .toString();
+      expect(linkResult).toBe('[Click \\[me\\]](https://example.com/\\(a%20b\\))\n');
+
+      const codeResult = write.safe().code('a`b').toString();
+      expect(codeResult).toBe('``a`b``\n');
     });
   });
 
@@ -488,6 +534,94 @@ describe('ProseWriter', () => {
     });
   });
 
+  describe('validation', () => {
+    it('throws validation errors with diagnostics', () => {
+      const validator: OutputValidator = () => ({
+        valid: false,
+        issues: [{ path: '$.name', message: 'Required' }],
+      });
+
+      expect(() => write('').json({}).toString()).not.toThrow();
+      expect(() => write('').json({}, { validate: validator })).toThrow(ValidationError);
+      expect(() => write('').json({}, { validate: validator })).toThrow(
+        /1\. \$\.name: Required/,
+      );
+    });
+
+    it('runs validation for yaml', () => {
+      let called = false;
+      const validator: OutputValidator = ({ format }) => {
+        called = format === 'yaml';
+        return { valid: true };
+      };
+      const result = write('Config:').yaml({ key: 'value' }, { validate: validator });
+      expect(result.toString()).toContain('```yaml');
+      expect(called).toBe(true);
+    });
+
+    it('uses the json schema adapter for json only', () => {
+      let calls = 0;
+      const adapter: JsonSchemaAdapter = () => {
+        calls += 1;
+        return { valid: true };
+      };
+      const validator = createJsonSchemaValidator(adapter);
+
+      write('').json({ a: 1 }, { schema: { type: 'object' }, validate: validator });
+      write('').yaml({ a: 1 }, { schema: { type: 'object' }, validate: validator });
+
+      expect(calls).toBe(1);
+    });
+
+    it('parses JSON strings before validation', () => {
+      const validator: OutputValidator = ({ data }) => {
+        const record = data as { name?: string } | null;
+        if (record && record.name === 'Ada') {
+          return { valid: true };
+        }
+        return { valid: false, issues: [{ message: 'name missing' }] };
+      };
+
+      const result = write('').json('{"name":"Ada"}', { validate: validator }).toString();
+      expect(result).toBe('```json\n{"name":"Ada"}\n```\n\n');
+    });
+
+    it('throws a validation error for invalid JSON strings', () => {
+      const validator: OutputValidator = () => ({ valid: true });
+      expect(() => write('').json('{"name":', { validate: validator })).toThrow(
+        /Invalid JSON string/,
+      );
+    });
+
+    it('parses YAML strings before validation with an adapter', () => {
+      const parseYaml = createYamlParserAdapter((input: string) => {
+        if (input.trim() === 'name: Ada') return { name: 'Ada' };
+        throw new Error('bad yaml');
+      });
+      const validator: OutputValidator = ({ data }) => {
+        const record = data as { name?: string } | null;
+        return record?.name === 'Ada'
+          ? { valid: true }
+          : { valid: false, issues: [{ message: 'name missing' }] };
+      };
+
+      const result = write('')
+        .yaml('name: Ada', { validate: validator, parseYaml })
+        .toString();
+      expect(result).toBe('```yaml\nname: Ada\n```\n\n');
+    });
+
+    it('throws a validation error for invalid YAML strings', () => {
+      const parseYaml = () => {
+        throw new Error('bad yaml');
+      };
+      const validator: OutputValidator = () => ({ valid: true });
+      expect(() => write('').yaml('name: [', { validate: validator, parseYaml })).toThrow(
+        /Invalid YAML string/,
+      );
+    });
+  });
+
   describe('complex chains', () => {
     it('builds a complete document', () => {
       const result = write('Introduction to the API')
@@ -706,6 +840,12 @@ describe('ProseWriter', () => {
         .toString();
       expect(result).toBe('Hello, World!\n\nHow are you?\n');
     });
+
+    it('sanitizes variable values in safe mode', () => {
+      const template = write.safe('Hello, {{name}}!');
+      const result = template.fill({ name: '<Alice> & [ok]' }).toString();
+      expect(result).toBe('Hello, &lt;Alice&gt; &amp; \\[ok\\]\\!\n');
+    });
   });
 
   describe('section', () => {
@@ -784,6 +924,22 @@ describe('ProseWriter', () => {
         .toString();
       expect(result).toContain('**name**: The user name');
       expect(result).toContain('**age**: The user age');
+    });
+  });
+
+  describe('schema helper', () => {
+    it('embeds schemas with a title and tag', () => {
+      const schema = { type: 'object', properties: { name: { type: 'string' } } };
+      const result = write('')
+        .schema(schema, {
+          title: 'Output Schema',
+          tag: 'output_schema',
+        })
+        .toString();
+
+      expect(result).toContain('## Output Schema');
+      expect(result).toContain('<output_schema>');
+      expect(result).toContain('```json');
     });
   });
 

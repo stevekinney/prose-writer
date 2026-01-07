@@ -22,6 +22,30 @@
       "bun": "./dist/index.js",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./markdown": {
+      "types": "./dist/markdown.d.ts",
+      "bun": "./dist/markdown.js",
+      "import": "./dist/markdown.js",
+      "default": "./dist/markdown.js"
+    },
+    "./validation": {
+      "types": "./dist/validation.d.ts",
+      "bun": "./dist/validation.js",
+      "import": "./dist/validation.js",
+      "default": "./dist/validation.js"
+    },
+    "./schema": {
+      "types": "./dist/schema.d.ts",
+      "bun": "./dist/schema.js",
+      "import": "./dist/schema.js",
+      "default": "./dist/schema.js"
+    },
+    "./safe": {
+      "types": "./dist/safe.d.ts",
+      "bun": "./dist/safe.js",
+      "import": "./dist/safe.js",
+      "default": "./dist/safe.js"
     }
   },
   "main": "./dist/index.js",
@@ -33,7 +57,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "bun build --target=bun --outdir=dist --minify --sourcemap=external ./src/index.ts && bun run build:types",
+    "build": "bun build --target=bun --outdir=dist --minify --sourcemap=external ./src/index.ts ./src/markdown.ts ./src/validation.ts ./src/schema.ts ./src/safe.ts && bun run build:types",
     "build:types": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist coverage .eslintcache",
     "dev": "bun --watch run src/index.ts",

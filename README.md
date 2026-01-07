@@ -52,7 +52,8 @@ const prompt = write(`You are a ${role}.`)
 ### Real-world example
 
 ```typescript
-import { write, bold, code } from 'prose-writer';
+import { write } from 'prose-writer';
+import { bold, code } from 'prose-writer/markdown';
 
 // Define reusable components
 const codeReviewPersona = write('You are a', bold('senior software engineer.')).write(
@@ -96,10 +97,47 @@ npm install prose-writer
 pnpm add prose-writer
 ```
 
+## Exports
+
+Core:
+
+```typescript
+import { write, ProseWriter } from 'prose-writer';
+```
+
+Markdown utilities:
+
+```typescript
+import { bold, italic, code, strike, link, image } from 'prose-writer/markdown';
+```
+
+Validation helpers:
+
+```typescript
+import {
+  createJsonSchemaValidator,
+  createYamlParserAdapter,
+  ValidationError,
+} from 'prose-writer/validation';
+```
+
+Schema types:
+
+```typescript
+import type { SchemaEmbedOptions } from 'prose-writer/schema';
+```
+
+Safe writer:
+
+```typescript
+import { write } from 'prose-writer/safe';
+```
+
 ## Quick Start
 
 ```typescript
-import { write, bold } from 'prose-writer';
+import { write } from 'prose-writer';
+import { bold } from 'prose-writer/markdown';
 
 const prompt = write('You are a', bold('helpful assistant.'))
   .write('Please help the user with their request.')
@@ -122,7 +160,8 @@ Please help the user with their request.
 Creates a new `ProseWriter` instance. Multiple arguments are joined with a space, and a newline is added at the end. Can be called with zero arguments to add a blank line between other `write()` calls.
 
 ```typescript
-import { write, bold, code } from 'prose-writer';
+import { write } from 'prose-writer';
+import { bold, code } from 'prose-writer/markdown';
 
 const text = write('Hello', bold('World')).toString();
 ```
@@ -131,6 +170,35 @@ Output:
 
 ```markdown
 Hello **World**
+```
+
+### `write.safe(...content: string[])`
+
+Creates a `ProseWriter` that escapes untrusted input. Safe mode:
+
+- Escapes Markdown punctuation and line-leading markers (lists, headings, blockquotes)
+- Escapes XML-sensitive characters (`&`, `<`, `>`) in text and tags
+- Sanitizes link text + destinations
+- Wraps inline code with a backtick fence that can't be broken by user input
+
+Use this when inserting user-generated content. To intentionally include raw Markdown, pass a `ProseWriter` instance or call `.raw()` to bypass escaping.
+In safe mode, `fill()` also escapes variable values.
+If your template string is trusted (authored by you), use `write.safe.template(...)` to prevent the template itself from being escaped.
+You can also import a safe-first writer: `import { write } from 'prose-writer/safe'`.
+
+```typescript
+const prompt = write.safe
+  .template('You are {{role}}!')
+  .fill({ role: userRole })
+  .toString();
+```
+
+```typescript
+const prompt = write
+  .safe('User input:', userInput)
+  .tag('context', userInput)
+  .link('Source', userUrl)
+  .toString();
 ```
 
 You can also start a chain using `write.with()` if you want to use the builder pattern immediately:
@@ -202,7 +270,8 @@ The following utilities return formatted strings and can be used within `write()
 - `image(alt: string, url: string)` - `![alt](url)`
 
 ```typescript
-import { write, bold, italic, code, link } from 'prose-writer';
+import { write } from 'prose-writer';
+import { bold, italic, code, link } from 'prose-writer/markdown';
 
 write(
   'Check out',
@@ -552,7 +621,7 @@ Section 1
 Section 2
 ```
 
-### `.json(data: unknown)`
+### `.json(data: unknown, options?: ValidationOptions)`
 
 Appends a JSON code block. If the data is not a string, it will be stringified with formatting.
 
@@ -586,6 +655,17 @@ Output:
 { "raw": "json" }
 ```
 ````
+
+You can pass validation hooks via `options`:
+
+```typescript
+write('').json(data, {
+  schema: outputSchema,
+  validate: ({ format, data, schema }) => {
+    // return { valid: true } or { valid: false, issues: [...] }
+  },
+});
+```
 
 ### `.append(writer: ProseWriter)`
 
@@ -694,7 +774,8 @@ function.
 // Recommended:
 
 ```typescript
-import { write, code } from 'prose-writer';
+import { write } from 'prose-writer';
+import { code } from 'prose-writer/markdown';
 write('Use the', code('calculateTotal'), 'function.').toString();
 ```
 
@@ -815,7 +896,8 @@ information.
 // Recommended:
 
 ```typescript
-import { write, bold } from 'prose-writer';
+import { write } from 'prose-writer';
+import { bold } from 'prose-writer/markdown';
 write('This is', bold('important'), 'information.').toString();
 ```
 
@@ -844,7 +926,8 @@ the following.
 // Recommended:
 
 ```typescript
-import { write, italic } from 'prose-writer';
+import { write } from 'prose-writer';
+import { italic } from 'prose-writer/markdown';
 write('Please', italic('note'), 'the following.').toString();
 ```
 
@@ -893,7 +976,8 @@ New
 // Recommended:
 
 ```typescript
-import { write, strike } from 'prose-writer';
+import { write } from 'prose-writer';
+import { strike } from 'prose-writer/markdown';
 write('Price:', strike('$100'), '$80').toString();
 ```
 
@@ -949,7 +1033,8 @@ for details.
 // Recommended:
 
 ```typescript
-import { write, link } from 'prose-writer';
+import { write } from 'prose-writer';
+import { link } from 'prose-writer/markdown';
 write('See the', link('documentation', 'https://example.com'), 'for details.').toString();
 ```
 
@@ -959,7 +1044,7 @@ Output:
 See the [documentation](https://example.com) for details.
 ```
 
-### `.yaml(data: unknown)`
+### `.yaml(data: unknown, options?: ValidationOptions)`
 
 Appends a YAML code block. If data is not a string, it will be converted to YAML format.
 
@@ -995,6 +1080,74 @@ Wraps content with custom delimiters. Useful for models that respond to specific
 ```typescript
 write('Input:').delimit('###', '###', 'content here').toString();
 ```
+
+### Structured Output Validation
+
+`json()` and `yaml()` accept a `validate` hook. If validation fails, a `ValidationError` is thrown with diagnostic details.
+When validating JSON, string inputs are parsed first and will throw a `ValidationError` if they are invalid JSON. For YAML, you can supply a parser via `parseYaml` to parse strings before validation.
+
+```typescript
+import type { OutputValidator } from 'prose-writer/validation';
+
+const validate: OutputValidator = ({ format, data, schema }) => {
+  if (format !== 'json') return { valid: true };
+  if (!schema) return { valid: true };
+  // Your validation logic here
+  return { valid: true };
+};
+
+write('').json(payload, { schema: outputSchema, validate });
+```
+
+For YAML string inputs, pass a parser adapter:
+
+```typescript
+import { parse as parseYaml } from 'yaml';
+import { createYamlParserAdapter } from 'prose-writer/validation';
+
+write('').yaml(payloadString, {
+  validate,
+  parseYaml: createYamlParserAdapter(parseYaml),
+});
+```
+
+#### JSON Schema via Adapter
+
+`prose-writer` stays zero-deps, but you can plug in Ajv (or any validator) through an adapter.
+
+```typescript
+import Ajv from 'ajv';
+import { createJsonSchemaValidator } from 'prose-writer/validation';
+
+const ajv = new Ajv();
+const validate = createJsonSchemaValidator((schema, data) => {
+  const valid = ajv.validate(schema, data);
+  if (valid) return { valid: true };
+  return {
+    valid: false,
+    issues: (ajv.errors ?? []).map((error) => ({
+      path: error.instancePath || '$',
+      message: error.message ?? 'Invalid value',
+    })),
+  };
+});
+
+write('').json(payload, { schema: outputSchema, validate });
+```
+
+#### Embedding Schemas in Prompts
+
+```typescript
+write('Return JSON that matches this schema:')
+  .schema(outputSchema, { title: 'Output Schema', tag: 'output_schema' })
+  .toString();
+```
+
+Recommended usage:
+
+- Prefer JSON Schema for structured output formats.
+- Store schemas alongside prompt builders and include them in the prompt with `.schema()`.
+- Validate the object you send or receive, not just the stringified output.
 
 ### `.compact()`
 
@@ -1080,7 +1233,8 @@ Features:
 Converts the prose to plain text by stripping all markdown formatting.
 
 ```typescript
-import { write, bold } from 'prose-writer';
+import { write } from 'prose-writer';
+import { bold } from 'prose-writer/markdown';
 
 const prose = write('')
   .heading(1, 'Title')

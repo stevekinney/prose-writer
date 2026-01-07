@@ -29,17 +29,218 @@ export interface ListBuilder extends InlineUtils {
   orderedList(...items: (string | number | boolean | ProseWriter)[]): this;
 }
 
+class SafeString {
+  private value: string;
+
+  constructor(value: string) {
+    this.value = value;
+  }
+
+  toString(): string {
+    return this.value;
+  }
+
+  valueOf(): string {
+    return this.value;
+  }
+}
+
+export type OutputFormat = 'json' | 'yaml';
+
+export type ValidationIssue = {
+  message: string;
+  path?: string;
+};
+
+export type ValidationResult = {
+  valid: boolean;
+  issues?: ValidationIssue[];
+};
+
+export type OutputValidator = (options: {
+  format: OutputFormat;
+  data: unknown;
+  schema?: unknown;
+}) => ValidationResult;
+
+export type JsonSchemaAdapter = (schema: unknown, data: unknown) => ValidationResult;
+
+export type ValidationOptions = {
+  schema?: unknown;
+  validate?: OutputValidator;
+  label?: string;
+  parseYaml?: (input: string) => unknown;
+};
+
+export type SchemaEmbedOptions = {
+  format?: OutputFormat;
+  title?: string;
+  level?: 1 | 2 | 3 | 4 | 5 | 6;
+  tag?: string;
+};
+
+type WriterOptions = {
+  safe?: boolean;
+};
+
+type WriterValue = string | number | boolean | ProseWriter;
+type ContentValue = WriterValue | SafeString;
+
+const escapeXmlText = (value: string): string =>
+  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+const escapeMarkdownLineStart = (line: string): string => {
+  if (/^\s*#{1,6}\s/.test(line)) {
+    return line.replace(/^(\s*)(#{1,6})/, '$1\\$2');
+  }
+  if (/^\s*>/.test(line)) {
+    return line.replace(/^(\s*)>/, '$1\\>');
+  }
+  if (/^\s*([-+*])\s/.test(line)) {
+    return line.replace(/^(\s*)([-+*])/, '$1\\$2');
+  }
+  if (/^\s*\d+\.\s/.test(line)) {
+    return line.replace(/^(\s*)(\d+)\./, '$1$2\\.');
+  }
+  return line;
+};
+
+const escapeMarkdownText = (value: string): string => {
+  const escaped = escapeXmlText(value)
+    .replace(/([\\`*_~()|!])/g, '\\$1')
+    .replace(/\[/g, '\\[')
+    .replace(/\]/g, '\\]');
+  return escaped
+    .split('\n')
+    .map((line) => escapeMarkdownLineStart(line))
+    .join('\n');
+};
+
+const wrapInlineCode = (value: string): string => {
+  const matches = value.match(/`+/g);
+  const fenceSize = (matches ? Math.max(...matches.map((m) => m.length)) : 0) + 1;
+  const fence = '`'.repeat(fenceSize);
+  const needsPadding = /^\s|\s$/.test(value);
+  const content = needsPadding ? ` ${value} ` : value;
+  return `${fence}${content}${fence}`;
+};
+
+const escapeLinkDestination = (url: string): string => {
+  const encoded = encodeURI(url);
+  return encoded.replace(/[()]/g, '\\$&');
+};
+
+const toContentString = (
+  content: ContentValue,
+  trim: 'none' | 'end' | 'both' = 'none',
+): { value: string; isTrusted: boolean } => {
+  if (content instanceof SafeString) {
+    return { value: content.toString(), isTrusted: true };
+  }
+  if (content instanceof ProseWriter) {
+    const raw = content.toString();
+    if (trim === 'end') return { value: raw.trimEnd(), isTrusted: true };
+    if (trim === 'both') return { value: raw.trim(), isTrusted: true };
+    return { value: raw, isTrusted: true };
+  }
+  return { value: String(content), isTrusted: false };
+};
+
+const toSafeInlineText = (content: ContentValue): string => {
+  const { value, isTrusted } = toContentString(content, 'both');
+  return isTrusted ? value : escapeMarkdownText(value);
+};
+
+const asSafeString = (value: string): string =>
+  new SafeString(value) as unknown as string;
+
+const safeBold = (content: ContentValue): string =>
+  asSafeString(`**${toSafeInlineText(content)}**`);
+
+const safeItalic = (content: ContentValue): string =>
+  asSafeString(`*${toSafeInlineText(content)}*`);
+
+const safeStrike = (content: ContentValue): string =>
+  asSafeString(`~~${toSafeInlineText(content)}~~`);
+
+const safeInlineCode = (content: ContentValue): string => {
+  const { value } = toContentString(content, 'both');
+  return asSafeString(wrapInlineCode(value));
+};
+
+const safeLink = (text: string | ProseWriter, url: string): string => {
+  const { value, isTrusted } = toContentString(text, 'both');
+  const safeText = isTrusted ? value : escapeMarkdownText(value);
+  const safeUrl = escapeLinkDestination(url);
+  return asSafeString(`[${safeText}](${safeUrl})`);
+};
+
+const safeImage = (alt: string | ProseWriter, url: string): string => {
+  const { value, isTrusted } = toContentString(alt, 'both');
+  const safeAlt = isTrusted ? value : escapeMarkdownText(value);
+  const safeUrl = escapeLinkDestination(url);
+  return asSafeString(`![${safeAlt}](${safeUrl})`);
+};
+
+const formatValidationIssues = (issues: ValidationIssue[]): string => {
+  if (issues.length === 0) {
+    return 'No validation issues were provided.';
+  }
+  return issues
+    .map((issue, index) => {
+      const path = issue.path ? `${issue.path}: ` : '';
+      return `${index + 1}. ${path}${issue.message}`;
+    })
+    .join('\n');
+};
+
+export class ValidationError extends Error {
+  format: OutputFormat;
+  issues: ValidationIssue[];
+
+  constructor(format: OutputFormat, issues: ValidationIssue[], label?: string) {
+    const title = label ?? `${format.toUpperCase()} validation failed`;
+    super(`${title}\n${formatValidationIssues(issues)}`);
+    this.name = 'ValidationError';
+    this.format = format;
+    this.issues = issues;
+  }
+}
+
+export const createJsonSchemaValidator = (
+  adapter: JsonSchemaAdapter,
+): OutputValidator => {
+  return ({ format, data, schema }): ValidationResult => {
+    if (format !== 'json' || schema === undefined) {
+      return { valid: true };
+    }
+    return adapter(schema, data);
+  };
+};
+
+export const createYamlParserAdapter = (
+  parser: (input: string) => unknown,
+): ((input: string) => unknown) => {
+  return (input: string) => parser(input);
+};
+
 /**
  * A chainable prose writer for building formatted text/markdown strings.
  */
 export class ProseWriter {
   private parts: string[] = [];
   private _skipNextPadding = false;
+  private safeMode: boolean;
 
-  constructor(content?: string) {
+  constructor(content?: string, options: WriterOptions = {}) {
+    this.safeMode = options.safe ?? false;
     if (content !== undefined) {
       this.parts.push(content.endsWith('\n') ? content : content + '\n');
     }
+  }
+
+  private createChildWriter(): ProseWriter {
+    return new ProseWriter(undefined, { safe: this.safeMode });
   }
 
   /**
@@ -50,10 +251,11 @@ export class ProseWriter {
   write(...content: (string | number | boolean | ProseWriter)[]): this {
     const joined = content
       .map((c) => {
-        if (c instanceof ProseWriter) {
-          return c.toString().trimEnd();
+        const { value, isTrusted } = toContentString(c, 'end');
+        if (this.safeMode && !isTrusted) {
+          return escapeMarkdownText(value);
         }
-        return String(c);
+        return value;
       })
       .join(' ');
 
@@ -88,7 +290,22 @@ export class ProseWriter {
     if (args.length === 1 && typeof args[0] === 'function') {
       const { builder, getItems } = this.createListBuilder();
       (args[0] as (l: ListBuilder) => void)(builder);
-      return this.unorderedList(...getItems());
+      const items = getItems();
+      const listContent = items
+        .map((item) => {
+          if (item instanceof ProseWriter) {
+            return item
+              .toString()
+              .trimEnd()
+              .split('\n')
+              .map((line) => `  ${line}`)
+              .join('\n');
+          }
+          return `- ${item}`;
+        })
+        .join('\n');
+      this.parts.push(`${this.padding}${listContent}\n\n`);
+      return this;
     }
 
     const items = args as (string | number | boolean | ProseWriter)[];
@@ -102,7 +319,9 @@ export class ProseWriter {
             .map((line) => `  ${line}`)
             .join('\n');
         }
-        return `- ${item}`;
+        const { value, isTrusted } = toContentString(item);
+        const text = this.safeMode && !isTrusted ? escapeMarkdownText(value) : value;
+        return `- ${text}`;
       })
       .join('\n');
     this.parts.push(`${this.padding}${listContent}\n\n`);
@@ -136,7 +355,23 @@ export class ProseWriter {
     if (args.length === 1 && typeof args[0] === 'function') {
       const { builder, getItems } = this.createListBuilder();
       (args[0] as (l: ListBuilder) => void)(builder);
-      return this.orderedList(...getItems());
+      let index = 1;
+      const items = getItems();
+      const listContent = items
+        .map((item) => {
+          if (item instanceof ProseWriter) {
+            return item
+              .toString()
+              .trimEnd()
+              .split('\n')
+              .map((line) => `  ${line}`)
+              .join('\n');
+          }
+          return `${index++}. ${item}`;
+        })
+        .join('\n');
+      this.parts.push(`${this.padding}${listContent}\n\n`);
+      return this;
     }
 
     let index = 1;
@@ -151,7 +386,9 @@ export class ProseWriter {
             .map((line) => `  ${line}`)
             .join('\n');
         }
-        return `${index++}. ${item}`;
+        const { value, isTrusted } = toContentString(item);
+        const text = this.safeMode && !isTrusted ? escapeMarkdownText(value) : value;
+        return `${index++}. ${text}`;
       })
       .join('\n');
     this.parts.push(`${this.padding}${listContent}\n\n`);
@@ -215,11 +452,12 @@ export class ProseWriter {
       if (Array.isArray(arg) && arg.length === 2 && typeof arg[1] === 'boolean') {
         const [content, checked] = arg;
         const checkbox = checked ? '[x] ' : '[ ] ';
-        const text = write(content).toString().trimEnd();
+        const text = this.createChildWriter().write(content).toString().trimEnd();
         return checkbox + text;
       }
       const checkbox = '[ ] ';
-      const text = write(arg as string | number | boolean | ProseWriter)
+      const text = this.createChildWriter()
+        .write(arg as string | number | boolean | ProseWriter)
         .toString()
         .trimEnd();
       return checkbox + text;
@@ -239,11 +477,12 @@ export class ProseWriter {
   ): this {
     let contentString: string;
     if (typeof content === 'function') {
-      const writer = new ProseWriter();
+      const writer = this.createChildWriter();
       content(writer.enhanced);
       contentString = writer.toString().trimEnd();
     } else {
-      contentString = content;
+      const { value, isTrusted } = toContentString(content);
+      contentString = this.safeMode && !isTrusted ? escapeMarkdownText(value) : value;
     }
 
     const lines = contentString.split('\n');
@@ -259,7 +498,15 @@ export class ProseWriter {
    */
   heading(level: 1 | 2 | 3 | 4 | 5 | 6, ...content: string[]): this {
     const hashes = '#'.repeat(level);
-    const joined = content.join(' ');
+    const joined = content
+      .map((part) => {
+        const { value, isTrusted } = toContentString(part);
+        if (this.safeMode && !isTrusted) {
+          return escapeMarkdownText(value);
+        }
+        return value;
+      })
+      .join(' ');
     this.parts.push(`${this.padding}${hashes} ${joined}\n\n`);
     return this;
   }
@@ -269,7 +516,16 @@ export class ProseWriter {
    * Lines are separated by an empty blockquote line.
    */
   blockquote(...lines: string[]): this {
-    const quotedLines = lines.map((line) => `> ${line}`).join('\n>\n');
+    const quotedLines = lines
+      .map((line) => {
+        const { value, isTrusted } = toContentString(line);
+        if (this.safeMode && !isTrusted) {
+          return escapeMarkdownText(value);
+        }
+        return value;
+      })
+      .map((line) => `> ${line}`)
+      .join('\n>\n');
     this.parts.push(`${this.padding}${quotedLines}\n\n`);
     return this;
   }
@@ -305,7 +561,8 @@ export class ProseWriter {
    * Appends a JSON code block.
    * If data is not a string, it will be stringified with formatting.
    */
-  json(data: unknown): this {
+  json(data: unknown, options: ValidationOptions = {}): this {
+    this.validateOutput('json', data, options);
     const jsonString = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
     return this.codeblock('json', jsonString);
   }
@@ -327,15 +584,25 @@ export class ProseWriter {
    * This is passed to builder functions to allow using formatters without imports.
    */
   private get enhanced(): this & InlineUtils {
-    const formatters: Record<string, unknown> = {
-      bold,
-      italic,
-      code,
-      inline,
-      link,
-      strike,
-      image,
-    };
+    const formatters: Record<string, unknown> = this.safeMode
+      ? {
+          bold: safeBold,
+          italic: safeItalic,
+          code: safeInlineCode,
+          inline: safeInlineCode,
+          link: safeLink,
+          strike: safeStrike,
+          image: safeImage,
+        }
+      : {
+          bold,
+          italic,
+          code,
+          inline,
+          link,
+          strike,
+          image,
+        };
     return new Proxy(this, {
       get(target, prop) {
         if (typeof prop === 'string' && prop in formatters) {
@@ -380,11 +647,16 @@ export class ProseWriter {
   ): this {
     let contentString: string;
     if (typeof content === 'function') {
-      const writer = new ProseWriter();
+      const writer = this.createChildWriter();
       content(writer.enhanced);
       contentString = writer.toString();
     } else {
-      contentString = content instanceof ProseWriter ? content.toString() : content;
+      const { value, isTrusted } = toContentString(content);
+      if (this.safeMode && !isTrusted) {
+        contentString = escapeXmlText(value);
+      } else {
+        contentString = value;
+      }
     }
     this.parts.push(`${this.padding}<${name}>\n${contentString.trimEnd()}\n</${name}>\n`);
     return this;
@@ -394,7 +666,8 @@ export class ProseWriter {
    * Appends inline code (wrapped in backticks).
    */
   code(content: string | number | boolean | ProseWriter): this {
-    this.parts.push(this.padding + code(content) + '\n');
+    const formatted = this.safeMode ? safeInlineCode(content) : code(content);
+    this.parts.push(this.padding + formatted + '\n');
     return this;
   }
 
@@ -405,9 +678,11 @@ export class ProseWriter {
   fill(variables: Record<string, string>): ProseWriter {
     const content = this.toString();
     const filled = content.replace(/\{\{(\w+)\}\}/g, (match, key: string): string => {
-      return variables[key] ?? match;
+      const value = variables[key];
+      if (value === undefined) return match;
+      return this.safeMode ? escapeMarkdownText(value) : value;
     });
-    return new ProseWriter(filled);
+    return new ProseWriter(filled, { safe: this.safeMode });
   }
 
   /**
@@ -421,10 +696,11 @@ export class ProseWriter {
     builder: (writer: ProseWriter & InlineUtils) => void,
     level: 1 | 2 | 3 | 4 | 5 | 6 = 2,
   ): this {
-    const sectionWriter = new ProseWriter();
+    const sectionWriter = this.createChildWriter();
     builder(sectionWriter.enhanced);
     const hashes = '#'.repeat(level);
-    this.parts.push(`${this.padding}${hashes} ${name}\n\n${sectionWriter.toString()}`);
+    const title = this.safeMode ? escapeMarkdownText(name) : name;
+    this.parts.push(`${this.padding}${hashes} ${title}\n\n${sectionWriter.toString()}`);
     return this;
   }
 
@@ -433,7 +709,7 @@ export class ProseWriter {
    * Useful for creating variations of a base prompt.
    */
   clone(): ProseWriter {
-    const cloned = new ProseWriter();
+    const cloned = new ProseWriter(undefined, { safe: this.safeMode });
     cloned.parts = [...this.parts];
     return cloned;
   }
@@ -447,17 +723,24 @@ export class ProseWriter {
     headers: [...T[]],
     rows: (string[] | Record<T, string | number | boolean | ProseWriter>)[],
   ): this {
-    const headerRow = `| ${headers.join(' | ')} |`;
+    const safeHeaders = this.safeMode
+      ? headers.map((header) => escapeMarkdownText(header))
+      : headers;
+    const headerRow = `| ${safeHeaders.join(' | ')} |`;
     const separatorRow = `| ${headers.map(() => '---').join(' | ')} |`;
 
     const dataRows = rows
       .map((row) => {
         const values = Array.isArray(row)
-          ? row
+          ? row.map((val) => {
+              const text = String(val ?? '');
+              return this.safeMode ? escapeMarkdownText(text) : text;
+            })
           : headers.map((h) => {
               const val = row[h];
               if (val instanceof ProseWriter) return val.toPlainText();
-              return String(val ?? '');
+              const text = String(val ?? '');
+              return this.safeMode ? escapeMarkdownText(text) : text;
             });
         return `| ${values.join(' | ')} |`;
       })
@@ -473,17 +756,48 @@ export class ProseWriter {
    */
   definitions(obj: Record<string, string>): this {
     const entries = Object.entries(obj)
-      .map(([key, value]) => `**${key}**: ${value}`)
+      .map(([key, value]) => {
+        if (this.safeMode) {
+          return `${safeBold(key)}: ${escapeMarkdownText(value)}`;
+        }
+        return `**${key}**: ${value}`;
+      })
       .join('\n');
     this.parts.push(`${this.padding}${entries}\n\n`);
     return this;
   }
 
   /**
+   * Embeds a schema or output contract in the prompt.
+   */
+  schema(schemaValue: unknown, options: SchemaEmbedOptions = {}): this {
+    const { format = 'json', title, level = 2, tag } = options;
+    if (title) {
+      this.heading(level, title);
+    }
+
+    if (tag) {
+      const schemaWriter = this.createChildWriter();
+      if (format === 'json') {
+        schemaWriter.json(schemaValue);
+      } else {
+        schemaWriter.yaml(schemaValue);
+      }
+      return this.tag(tag, schemaWriter);
+    }
+
+    if (format === 'json') {
+      return this.json(schemaValue);
+    }
+    return this.yaml(schemaValue);
+  }
+
+  /**
    * Appends bold text.
    */
   bold(content: string | number | boolean | ProseWriter): this {
-    this.parts.push(this.padding + bold(content) + '\n');
+    const formatted = this.safeMode ? safeBold(content) : bold(content);
+    this.parts.push(this.padding + formatted + '\n');
     return this;
   }
 
@@ -491,7 +805,8 @@ export class ProseWriter {
    * Appends italic text.
    */
   italic(content: string | number | boolean | ProseWriter): this {
-    this.parts.push(this.padding + italic(content) + '\n');
+    const formatted = this.safeMode ? safeItalic(content) : italic(content);
+    this.parts.push(this.padding + formatted + '\n');
     return this;
   }
 
@@ -499,7 +814,8 @@ export class ProseWriter {
    * Appends strikethrough text.
    */
   strike(content: string | number | boolean | ProseWriter): this {
-    this.parts.push(this.padding + strike(content) + '\n');
+    const formatted = this.safeMode ? safeStrike(content) : strike(content);
+    this.parts.push(this.padding + formatted + '\n');
     return this;
   }
 
@@ -515,7 +831,8 @@ export class ProseWriter {
    * Appends a markdown link.
    */
   link(text: string | ProseWriter, url: string): this {
-    this.parts.push(this.padding + link(text, url) + '\n');
+    const formatted = this.safeMode ? safeLink(text, url) : link(text, url);
+    this.parts.push(this.padding + formatted + '\n');
     return this;
   }
 
@@ -523,7 +840,8 @@ export class ProseWriter {
    * Appends a markdown image.
    */
   image(alt: string | ProseWriter, url: string): this {
-    this.parts.push(this.padding + image(alt, url) + '\n');
+    const formatted = this.safeMode ? safeImage(alt, url) : image(alt, url);
+    this.parts.push(this.padding + formatted + '\n');
     return this;
   }
 
@@ -539,7 +857,8 @@ export class ProseWriter {
    * Appends a YAML code block.
    * If data is not a string, it will be converted to YAML format.
    */
-  yaml(data: unknown): this {
+  yaml(data: unknown, options: ValidationOptions = {}): this {
+    this.validateOutput('yaml', data, options);
     const yamlString = typeof data === 'string' ? data : this.toYamlString(data);
     return this.codeblock('yaml', yamlString);
   }
@@ -608,7 +927,7 @@ export class ProseWriter {
    */
   compact(): ProseWriter {
     const content = this.toString().replace(/\n{3,}/g, '\n\n');
-    return new ProseWriter(content);
+    return new ProseWriter(content, { safe: this.safeMode });
   }
 
   /**
@@ -616,7 +935,7 @@ export class ProseWriter {
    */
   trim(): ProseWriter {
     const content = this.toString().trim();
-    return new ProseWriter(content);
+    return new ProseWriter(content, { safe: this.safeMode });
   }
 
   /**
@@ -700,6 +1019,49 @@ export class ProseWriter {
   }
 
   /**
+   * Runs output validation if a validator is provided.
+   */
+  private validateOutput(
+    format: OutputFormat,
+    data: unknown,
+    options: ValidationOptions,
+  ): void {
+    if (!options.validate) return;
+    let validationData = data;
+    if (format === 'json' && typeof data === 'string') {
+      try {
+        validationData = JSON.parse(data);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Invalid JSON string';
+        throw new ValidationError(
+          format,
+          [{ path: '$', message: `Invalid JSON string: ${message}` }],
+          options.label,
+        );
+      }
+    }
+    if (format === 'yaml' && typeof data === 'string' && options.parseYaml) {
+      try {
+        validationData = options.parseYaml(data);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Invalid YAML string';
+        throw new ValidationError(
+          format,
+          [{ path: '$', message: `Invalid YAML string: ${message}` }],
+          options.label,
+        );
+      }
+    }
+    const result = options.validate({
+      format,
+      data: validationData,
+      schema: options.schema,
+    });
+    if (result.valid) return;
+    throw new ValidationError(format, result.issues ?? [], options.label);
+  }
+
+  /**
    * Returns necessary newline padding if there is existing content.
    * Ensures exactly two newlines (a paragraph break) before a block element.
    */
@@ -725,7 +1087,8 @@ export class ProseWriter {
     const lb: ListBuilder = {
       item: (...content: (string | number | boolean | ProseWriter)[]) => {
         items.push(
-          write(...content)
+          this.createChildWriter()
+            .write(...content)
             .toString()
             .trimEnd(),
         );
@@ -736,7 +1099,8 @@ export class ProseWriter {
         ...content: (string | number | boolean | ProseWriter)[]
       ) => {
         const checkbox = checked ? '[x] ' : '[ ] ';
-        const text = write(...content)
+        const text = this.createChildWriter()
+          .write(...content)
           .toString()
           .trimEnd();
         items.push(checkbox + text);
@@ -749,7 +1113,7 @@ export class ProseWriter {
       unorderedList: (
         ...args: [(l: ListBuilder) => void] | (string | number | boolean | ProseWriter)[]
       ) => {
-        const sub = new ProseWriter();
+        const sub = this.createChildWriter();
         if (args.length === 1 && typeof args[0] === 'function') {
           sub.unorderedList(args[0] as (l: ListBuilder) => void);
         } else {
@@ -761,7 +1125,7 @@ export class ProseWriter {
       list: (
         ...args: [(l: ListBuilder) => void] | (string | number | boolean | ProseWriter)[]
       ) => {
-        const sub = new ProseWriter();
+        const sub = this.createChildWriter();
         if (args.length === 1 && typeof args[0] === 'function') {
           sub.list(args[0] as (l: ListBuilder) => void);
         } else {
@@ -773,7 +1137,7 @@ export class ProseWriter {
       orderedList: (
         ...args: [(l: ListBuilder) => void] | (string | number | boolean | ProseWriter)[]
       ) => {
-        const sub = new ProseWriter();
+        const sub = this.createChildWriter();
         if (args.length === 1 && typeof args[0] === 'function') {
           sub.orderedList(args[0] as (l: ListBuilder) => void);
         } else {
@@ -783,18 +1147,18 @@ export class ProseWriter {
         return lb;
       },
       comment: (content: string) => {
-        const sub = new ProseWriter();
+        const sub = this.createChildWriter();
         sub.comment(content);
         items.push(sub);
         return lb;
       },
-      bold,
-      italic,
-      code,
-      inline,
-      strike,
-      link,
-      image,
+      bold: this.safeMode ? safeBold : bold,
+      italic: this.safeMode ? safeItalic : italic,
+      code: this.safeMode ? safeInlineCode : code,
+      inline: this.safeMode ? safeInlineCode : inline,
+      strike: this.safeMode ? safeStrike : strike,
+      link: this.safeMode ? safeLink : link,
+      image: this.safeMode ? safeImage : image,
     };
     return { builder: lb, getItems: () => items };
   }
@@ -852,74 +1216,70 @@ export class ProseWriter {
 /**
  * Creates a new ProseWriter instance with the given content.
  */
-export const write = Object.assign(
-  (...content: (string | number | boolean | ProseWriter)[]): ProseWriter => {
-    return new ProseWriter().write(...content);
-  },
-  {
-    with: (builder: (writer: ProseWriter & InlineUtils) => void): ProseWriter => {
-      return new ProseWriter().with(builder);
+const buildWrite = (safeMode: boolean) => {
+  const createWriter = () => new ProseWriter(undefined, { safe: safeMode });
+  return Object.assign(
+    (...content: WriterValue[]): ProseWriter => {
+      return createWriter().write(...content);
     },
-    unorderedList: (
-      ...args: [(l: ListBuilder) => void] | (string | number | boolean | ProseWriter)[]
-    ): ProseWriter => {
-      const pw = new ProseWriter();
-      if (args.length === 1 && typeof args[0] === 'function') {
-        return pw.unorderedList(args[0] as (l: ListBuilder) => void);
-      }
-      return pw.unorderedList(...(args as (string | number | boolean | ProseWriter)[]));
+    {
+      with: (builder: (writer: ProseWriter & InlineUtils) => void): ProseWriter => {
+        return createWriter().with(builder);
+      },
+      template: (template: string): ProseWriter => {
+        if (safeMode) {
+          return createWriter().write(asSafeString(template));
+        }
+        return createWriter().write(template);
+      },
+      unorderedList: (
+        ...args: [(l: ListBuilder) => void] | WriterValue[]
+      ): ProseWriter => {
+        const pw = createWriter();
+        if (args.length === 1 && typeof args[0] === 'function') {
+          return pw.unorderedList(args[0] as (l: ListBuilder) => void);
+        }
+        return pw.unorderedList(...(args as WriterValue[]));
+      },
+      list: (...args: [(l: ListBuilder) => void] | WriterValue[]): ProseWriter => {
+        const pw = createWriter();
+        if (args.length === 1 && typeof args[0] === 'function') {
+          return pw.list(args[0] as (l: ListBuilder) => void);
+        }
+        return pw.list(...(args as WriterValue[]));
+      },
+      orderedList: (...args: [(l: ListBuilder) => void] | WriterValue[]): ProseWriter => {
+        const pw = createWriter();
+        if (args.length === 1 && typeof args[0] === 'function') {
+          return pw.orderedList(args[0] as (l: ListBuilder) => void);
+        }
+        return pw.orderedList(...(args as WriterValue[]));
+      },
+      tasks: (
+        ...args: [(l: ListBuilder) => void] | (WriterValue | [WriterValue, boolean])[]
+      ): ProseWriter => {
+        const pw = createWriter();
+        if (args.length === 1 && typeof args[0] === 'function') {
+          return pw.tasks(args[0] as (l: ListBuilder) => void);
+        }
+        return pw.tasks(...(args as (WriterValue | [WriterValue, boolean])[]));
+      },
+      callout: (
+        type: 'NOTE' | 'TIP' | 'IMPORTANT' | 'WARNING' | 'CAUTION',
+        content: string | ((writer: ProseWriter & InlineUtils) => void),
+      ): ProseWriter => {
+        return createWriter().callout(type, content);
+      },
+      schema: (schemaValue: unknown, options?: SchemaEmbedOptions): ProseWriter => {
+        return createWriter().schema(schemaValue, options);
+      },
     },
-    list: (
-      ...args: [(l: ListBuilder) => void] | (string | number | boolean | ProseWriter)[]
-    ): ProseWriter => {
-      const pw = new ProseWriter();
-      if (args.length === 1 && typeof args[0] === 'function') {
-        return pw.list(args[0] as (l: ListBuilder) => void);
-      }
-      return pw.list(...(args as (string | number | boolean | ProseWriter)[]));
-    },
-    orderedList: (
-      ...args: [(l: ListBuilder) => void] | (string | number | boolean | ProseWriter)[]
-    ): ProseWriter => {
-      const pw = new ProseWriter();
-      if (args.length === 1 && typeof args[0] === 'function') {
-        return pw.orderedList(args[0] as (l: ListBuilder) => void);
-      }
-      return pw.orderedList(...(args as (string | number | boolean | ProseWriter)[]));
-    },
-    tasks: (
-      ...args:
-        | [(l: ListBuilder) => void]
-        | (
-            | string
-            | number
-            | boolean
-            | ProseWriter
-            | [string | number | boolean | ProseWriter, boolean]
-          )[]
-    ): ProseWriter => {
-      const pw = new ProseWriter();
-      if (args.length === 1 && typeof args[0] === 'function') {
-        return pw.tasks(args[0] as (l: ListBuilder) => void);
-      }
-      return pw.tasks(
-        ...(args as (
-          | string
-          | number
-          | boolean
-          | ProseWriter
-          | [string | number | boolean | ProseWriter, boolean]
-        )[]),
-      );
-    },
-    callout: (
-      type: 'NOTE' | 'TIP' | 'IMPORTANT' | 'WARNING' | 'CAUTION',
-      content: string | ((writer: ProseWriter & InlineUtils) => void),
-    ): ProseWriter => {
-      return new ProseWriter().callout(type, content);
-    },
-  },
-);
+  );
+};
+
+const safeWrite = buildWrite(true);
+
+export const write = Object.assign(buildWrite(false), { safe: safeWrite });
 
 /**
  * Appends bold formatting to a string.
