@@ -672,20 +672,6 @@ export class ProseWriter {
   }
 
   /**
-   * Replaces template variables in the format {{variableName}} with provided values.
-   * Returns a new ProseWriter with the substitutions applied.
-   */
-  fill(variables: Record<string, string>): ProseWriter {
-    const content = this.toString();
-    const filled = content.replace(/\{\{(\w+)\}\}/g, (match, key: string): string => {
-      const value = variables[key];
-      if (value === undefined) return match;
-      return this.safeMode ? escapeMarkdownText(value) : value;
-    });
-    return new ProseWriter(filled, { safe: this.safeMode });
-  }
-
-  /**
    * Creates a semantic section with a heading and content built by the builder function.
    * @param name - The section heading text
    * @param builder - A function that receives a fresh ProseWriter to build section content
@@ -1182,13 +1168,6 @@ export class ProseWriter {
   }
 
   /**
-   * Creates a ProseWriter from a template string.
-   */
-  static fromTemplate(template: string): ProseWriter {
-    return new ProseWriter(template);
-  }
-
-  /**
    * Converts the accumulated prose to a string.
    */
   toString(): string {
@@ -1225,12 +1204,6 @@ const buildWrite = (safeMode: boolean) => {
     {
       with: (builder: (writer: ProseWriter & InlineUtils) => void): ProseWriter => {
         return createWriter().with(builder);
-      },
-      template: (template: string): ProseWriter => {
-        if (safeMode) {
-          return createWriter().write(asSafeString(template));
-        }
-        return createWriter().write(template);
       },
       unorderedList: (
         ...args: [(l: ListBuilder) => void] | WriterValue[]

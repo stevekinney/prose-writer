@@ -2,6 +2,33 @@
 
 A zero-dependency, chainable TypeScript library for building formatted text and markdown strings. Perfect for constructing LLM prompts, generating documentation, or any scenario where you need to programmatically build structured text.
 
+## In one sentence
+
+Prose Writer is a fluent builder for producing markdown-friendly strings without template literal sprawl.
+
+## When to use it
+
+- You need readable, composable prompt or document builders in code
+- You want conditionals, loops, and reusable pieces without `.map().join()` or manual concatenation
+- You need safe handling of untrusted input or structured output sections (JSON/YAML)
+
+## How it works (3 steps)
+
+1. `write()` creates a builder (optionally with initial text).
+2. Chain block helpers like `.section()`, `.list()`, `.tag()`, `.codeblock()`, `.json()`.
+3. Call `.toString()` or `String(writer)` to get the final text.
+
+```typescript
+import { write } from 'prose-writer';
+
+const prompt = write('You are a helpful assistant.')
+  .section('Guidelines', (w) => w.list('Be concise', 'Cite sources'))
+  .tag('input', userText)
+  .toString();
+```
+
+Each `write()` call ends with a newline, so chained calls become separate paragraphs (a blank line between). To keep content on the same line, pass multiple strings to a single `write()` call. Most block helpers add blank lines around themselves so the output reads like markdown paragraphs. Use `write()` with no args to insert an extra blank line and `.nextLine()` to keep consecutive lines together.
+
 ## Why Prose Writer?
 
 Building prompts for LLMs in code is _painful_. You end up with wild stuff like this.
@@ -42,7 +69,6 @@ const prompt = write(`You are a ${role}.`)
 - **Composable** - Build prompts from reusable pieces with `.append()` and `.clone()`
 - **Logical grouping** - Use `.with(builder)` to group related operations
 - **Conditional logic** - Add sections conditionally with `.when(condition, builder)`
-- **Template variables** - Use `{{placeholders}}` and `.fill()` for dynamic content
 - **LLM-optimized** - Built-in `.tag()` for XML delimiters (Claude loves these), `.json()` and `.yaml()` for structured output instructions
 - **Batch operations** - Iterate with `.each()` instead of awkward `.map().join()` chains
 - **Token awareness** - Estimate prompt size with `.tokens()`
@@ -66,6 +92,9 @@ const outputFormat = write('').definitions({
   suggestions: 'Recommended improvements',
 });
 
+const language = 'TypeScript';
+const framework = 'React';
+
 // Build the prompt
 const reviewPrompt = write('')
   .append(codeReviewPersona)
@@ -79,7 +108,8 @@ const reviewPrompt = write('')
   .when(strictMode, (w) => w.write('Be extremely thorough. Miss nothing.'))
   .section('Output Format', (w) => w.append(outputFormat))
   .tag('code', userCode)
-  .fill({ language: 'TypeScript', framework: 'React' });
+  .write('Language:', language)
+  .write('Framework:', framework);
 ```
 
 Stop fighting with template strings. Start writing prompts that are readable, maintainable, and composable.
@@ -182,16 +212,7 @@ Creates a `ProseWriter` that escapes untrusted input. Safe mode:
 - Wraps inline code with a backtick fence that can't be broken by user input
 
 Use this when inserting user-generated content. To intentionally include raw Markdown, pass a `ProseWriter` instance or call `.raw()` to bypass escaping.
-In safe mode, `fill()` also escapes variable values.
-If your template string is trusted (authored by you), use `write.safe.template(...)` to prevent the template itself from being escaped.
 You can also import a safe-first writer: `import { write } from 'prose-writer/safe'`.
-
-```typescript
-const prompt = write.safe
-  .template('You are {{role}}!')
-  .fill({ role: userRole })
-  .toString();
-```
 
 ```typescript
 const prompt = write
@@ -218,20 +239,21 @@ Hello **World**
 ```
 
 ```typescript
-const multiLine = write('First line').write('Second line').toString();
+const multiParagraph = write('First line').write('Second line').toString();
 ```
 
 Output:
 
 ```markdown
 First line
+
 Second line
 ```
 
-Adding a blank line between paragraphs:
+Adding an extra blank line between paragraphs:
 
 ```typescript
-const multiParagraph = write('Paragraph 1').write().write('Paragraph 2').toString();
+const spacedParagraphs = write('Paragraph 1').write().write('Paragraph 2').toString();
 ```
 
 Output:
@@ -244,7 +266,7 @@ Paragraph 2
 
 ### `.write(...content: string[])`
 
-Appends content to the prose. Multiple arguments are joined with a space, and a newline is added at the end. Returns `this` for chaining.
+Appends content to the prose. Multiple arguments are joined with a space, and a newline is added at the end. Each chained call starts a new paragraph (blank line), so use a single `write()` call when you want one line.
 
 ```typescript
 write('User:').write('Hello', 'Assistant').toString();
@@ -255,6 +277,18 @@ Output:
 ```markdown
 User:
 Hello Assistant
+```
+
+Same line by passing multiple strings:
+
+```typescript
+write('User:', 'Hello', 'Assistant').toString();
+```
+
+Output:
+
+```markdown
+User: Hello Assistant
 ```
 
 ### Inline Utilities
@@ -785,21 +819,6 @@ Output:
 Use the `calculateTotal` function.
 ```
 
-### `.fill(variables: Record<string, string>)`
-
-Replaces template variables in the format `{{variableName}}` with provided values. Returns a new `ProseWriter` with the substitutions applied (does not modify the original).
-
-```typescript
-const template = write('Hello, {{name}}! Welcome to {{place}}.');
-const result = template.fill({ name: 'Alice', place: 'Wonderland' }).toString();
-```
-
-Output:
-
-```markdown
-Hello, Alice! Welcome to Wonderland.
-```
-
 ### `.section(name: string, builder: (writer) => void, level?: 1-6)`
 
 Creates a semantic section with a heading and content built by the builder function. The optional `level` parameter defaults to 2.
@@ -1265,17 +1284,6 @@ const conclusion = write('').heading(2, 'Conclusion').write('Summary');
 const document = ProseWriter.join(intro, body, conclusion);
 ```
 
-### `ProseWriter.fromTemplate(template: string)`
-
-Static method that creates a ProseWriter from a template string.
-
-```typescript
-const prompt = ProseWriter.fromTemplate('Hello {{name}}, your role is {{role}}.').fill({
-  name: 'Alice',
-  role: 'developer',
-});
-```
-
 ### `.toString()`
 
 Converts the accumulated prose to a string.
@@ -1402,48 +1410,13 @@ const userPrompt = write('Please review the following code:')
   .toString();
 ```
 
-## Prompt Templates and Variations
+## Prompt Variations
 
-Use `fill()` for variable interpolation and `clone()` to create prompt variations:
+Use `clone()` to create variations without mutating the original prompt:
 
 ```typescript
 import { write } from 'prose-writer';
 
-// Create a reusable template
-const promptTemplate = write('You are a {{role}}.')
-  .section('Task', (w) => {
-    w.write('Help the user with {{task}}.');
-  })
-  .section('Guidelines', (w) => {
-    w.list('Be {{style}}', 'Focus on {{focus}}');
-  })
-  .section('Output', (w) => {
-    w.table(
-      ['Format', 'When to use'],
-      [
-        ['Code blocks', 'For code examples'],
-        ['Bullet points', 'For lists of items'],
-        ['Tables', 'For structured data'],
-      ],
-    );
-  });
-
-// Create variations for different use cases
-const codeReviewPrompt = promptTemplate.fill({
-  role: 'senior software engineer',
-  task: 'code review',
-  style: 'thorough and constructive',
-  focus: 'code quality and best practices',
-});
-
-const debuggingPrompt = promptTemplate.fill({
-  role: 'debugging expert',
-  task: 'finding and fixing bugs',
-  style: 'systematic and methodical',
-  focus: 'root cause analysis',
-});
-
-// Or use clone() for structural variations
 const basePrompt = write('You are an AI assistant.').section('Core Guidelines', (w) => {
   w.list('Be helpful', 'Be accurate');
 });

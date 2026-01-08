@@ -89,12 +89,6 @@ describe('ProseWriter', () => {
       expect(result).toBe('Line 1\n\\- item\n');
     });
 
-    it('preserves trusted templates while sanitizing variables', () => {
-      const template = write.safe.template('Hello, {{name}}!');
-      const result = template.fill({ name: '<Ada>' }).toString();
-      expect(result).toBe('Hello, &lt;Ada&gt;!\n');
-    });
-
     it('preserves safe inline utilities in builders', () => {
       const result = write.safe
         .with((w) => {
@@ -814,40 +808,6 @@ describe('ProseWriter', () => {
     });
   });
 
-  describe('fill', () => {
-    it('replaces single variable', () => {
-      const template = write('Hello, {{name}}!');
-      const result = template.fill({ name: 'World' }).toString();
-      expect(result).toBe('Hello, World!\n');
-    });
-
-    it('replaces multiple variables', () => {
-      const template = write('{{greeting}}, {{name}}! Welcome to {{place}}.');
-      const result = template
-        .fill({
-          greeting: 'Hello',
-          name: 'Alice',
-          place: 'Wonderland',
-        })
-        .toString();
-      expect(result).toBe('Hello, Alice! Welcome to Wonderland.\n');
-    });
-
-    it('is chainable on the result', () => {
-      const result = write('Hello, {{name}}!')
-        .fill({ name: 'World' })
-        .write('How are you?')
-        .toString();
-      expect(result).toBe('Hello, World!\n\nHow are you?\n');
-    });
-
-    it('sanitizes variable values in safe mode', () => {
-      const template = write.safe('Hello, {{name}}!');
-      const result = template.fill({ name: '<Alice> & [ok]' }).toString();
-      expect(result).toBe('Hello, &lt;Alice&gt; &amp; \\[ok\\]\\!\n');
-    });
-  });
-
   describe('section', () => {
     it('creates a section with heading and content', () => {
       const result = write('Intro')
@@ -1092,11 +1052,6 @@ describe('ProseWriter', () => {
       const a = write('A');
       const b = write('B');
       expect(ProseWriter.join(a, b).toString()).toBe('A\nB\n');
-    });
-
-    it('ProseWriter.fromTemplate creates from template string', () => {
-      const pw = ProseWriter.fromTemplate('Hello {{name}}');
-      expect(pw.toString()).toBe('Hello {{name}}\n');
     });
   });
 
