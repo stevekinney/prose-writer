@@ -163,18 +163,6 @@ describe('ProseWriter', () => {
     });
   });
 
-  describe('nextLine', () => {
-    it('prevents a paragraph break between write calls', () => {
-      const result = write('line1').nextLine().write('line2').toString();
-      expect(result).toBe('line1\nline2\n');
-    });
-
-    it('can be chained multiple times', () => {
-      const result = write('a').nextLine().write('b').nextLine().write('c').toString();
-      expect(result).toBe('a\nb\nc\n');
-    });
-  });
-
   describe('unorderedList', () => {
     it('creates an unordered list', () => {
       const result = write('intro').unorderedList('item1', 'item2', 'item3').toString();

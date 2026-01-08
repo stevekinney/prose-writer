@@ -269,15 +269,6 @@ export class ProseWriter {
   }
 
   /**
-   * Prevents the next block element or write() call from adding a paragraph break.
-   * Useful for placing two write() calls on consecutive lines.
-   */
-  nextLine(): this {
-    this._skipNextPadding = true;
-    return this;
-  }
-
-  /**
    * Appends an unordered list.
    * Each item is prefixed with `- ` on its own line.
    * Supports nesting by passing another ProseWriter instance or a builder function.

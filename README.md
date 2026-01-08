@@ -27,7 +27,7 @@ const prompt = write('You are a helpful assistant.')
   .toString();
 ```
 
-Each `write()` call ends with a newline, so chained calls become separate paragraphs (a blank line between). To keep content on the same line, pass multiple strings to a single `write()` call. Most block helpers add blank lines around themselves so the output reads like markdown paragraphs. Use `write()` with no args to insert an extra blank line and `.nextLine()` to keep consecutive lines together.
+Each `write()` call ends with a newline, so chained calls become separate paragraphs (a blank line between). To keep content on the same line, pass multiple strings to a single `write()` call. Most block helpers add blank lines around themselves so the output reads like markdown paragraphs. Use `write()` with no args to insert an extra blank line.
 
 ## Why Prose Writer?
 
@@ -50,7 +50,27 @@ ${context}
 
 Template literals become unreadable. String concatenation is worse. And when you need conditionals, variables, or reusable pieces? Good luck.
 
-**prose-writer** fixes this:
+Compared to concatenating arrays of strings, Prose Writer keeps structure and spacing inside the builder instead of scattering `join()` logic, manual newlines, and nested maps across your code. Compared to giant template strings, it avoids brittle whitespace and makes conditional or reusable sections readable and composable.
+
+Array concatenation version:
+
+```typescript
+const prompt = [
+  `You are a ${role}.`,
+  '',
+  '## Guidelines',
+  ...guidelines.map((g) => `- ${g}`),
+  '',
+  '## Examples',
+  ...examples.map((ex, i) => `### Example ${i + 1}\n${ex}`),
+  '',
+  '<context>',
+  context,
+  '</context>',
+].join('\n');
+```
+
+Prose Writer version:
 
 ```typescript
 const prompt = write(`You are a ${role}.`)
@@ -320,21 +340,6 @@ write(
 ```
 
 Obviously, you can just write regular Markdown here as well.
-
-### `.nextLine()`
-
-Prevents the next block element or `write()` call from adding a paragraph break. Useful for placing content on consecutive lines.
-
-```typescript
-write('Line 1').nextLine().write('Line 2').toString();
-```
-
-Output:
-
-```markdown
-Line 1
-Line 2
-```
 
 ### `.unorderedList(...items: string[] | number[] | boolean[] | ProseWriter[])`
 
