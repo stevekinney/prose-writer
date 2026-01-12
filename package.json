@@ -1,6 +1,6 @@
 {
   "name": "prose-writer",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A chainable TypeScript library for building formatted text and markdown strings",
   "keywords": [
     "markdown",
