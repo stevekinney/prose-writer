@@ -130,6 +130,15 @@ const escapeLinkDestination = (url: string): string => {
   return encoded.replace(/[()]/g, '\\$&');
 };
 
+const sanitizeLinkDestination = (url: string): string => {
+  const trimmed = url.trim();
+  const lower = trimmed.toLowerCase();
+  if (/^[a-z][a-z0-9+.-]*:/.test(lower) && !/^(https?|mailto):/.test(lower)) {
+    return '#';
+  }
+  return escapeLinkDestination(trimmed);
+};
+
 const toContentString = (
   content: ContentValue,
   trim: 'none' | 'end' | 'both' = 'none',
@@ -171,14 +180,14 @@ const safeInlineCode = (content: ContentValue): string => {
 const safeLink = (text: string | ProseWriter, url: string): string => {
   const { value, isTrusted } = toContentString(text, 'both');
   const safeText = isTrusted ? value : escapeMarkdownText(value);
-  const safeUrl = escapeLinkDestination(url);
+  const safeUrl = sanitizeLinkDestination(url);
   return asSafeString(`[${safeText}](${safeUrl})`);
 };
 
 const safeImage = (alt: string | ProseWriter, url: string): string => {
   const { value, isTrusted } = toContentString(alt, 'both');
   const safeAlt = isTrusted ? value : escapeMarkdownText(value);
-  const safeUrl = escapeLinkDestination(url);
+  const safeUrl = sanitizeLinkDestination(url);
   return asSafeString(`![${safeAlt}](${safeUrl})`);
 };
 
@@ -644,7 +653,7 @@ export class ProseWriter {
     } else {
       const { value, isTrusted } = toContentString(content);
       if (this.safeMode && !isTrusted) {
-        contentString = escapeXmlText(value);
+        contentString = escapeMarkdownText(value);
       } else {
         contentString = value;
       }

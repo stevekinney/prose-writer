@@ -228,7 +228,7 @@ Creates a `ProseWriter` that escapes untrusted input. Safe mode:
 
 - Escapes Markdown punctuation and line-leading markers (lists, headings, blockquotes)
 - Escapes XML-sensitive characters (`&`, `<`, `>`) in text and tags
-- Sanitizes link text + destinations
+- Sanitizes link text + destinations (blocks non-http/https/mailto schemes)
 - Wraps inline code with a backtick fence that can't be broken by user input
 
 Use this when inserting user-generated content. To intentionally include raw Markdown, pass a `ProseWriter` instance or call `.raw()` to bypass escaping.
@@ -1026,6 +1026,8 @@ Photo:
 
 ![A cat](https://example.com/cat.jpg)
 ```
+
+### `.raw(content: string)`
 
 Appends content without any processing. Useful for injecting pre-formatted content.
 
