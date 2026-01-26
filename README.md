@@ -147,6 +147,15 @@ npm install prose-writer
 pnpm add prose-writer
 ```
 
+## Release
+
+Releases are tag-driven and published via GitHub Actions using npm trusted publishing (OIDC).
+
+1. `npm version patch|minor|major`
+2. `git push --follow-tags`
+
+The workflow expects the tag (`vX.Y.Z`) to match `package.json`.
+
 ## Exports
 
 Core:
