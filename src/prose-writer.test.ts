@@ -676,7 +676,7 @@ describe('ProseWriter', () => {
       const result = write('Start')
         .when(true, (w) => w.write(' - added'))
         .toString();
-      expect(result).toBe('Start\n\n - added\n');
+      expect(result).toBe('Start\n\n- added\n');
     });
 
     it('skips builder when condition is false', () => {
@@ -690,7 +690,7 @@ describe('ProseWriter', () => {
       const result = write('Start')
         .when('truthy string', (w) => w.write(' - added'))
         .toString();
-      expect(result).toBe('Start\n\n - added\n');
+      expect(result).toBe('Start\n\n- added\n');
     });
 
     it('works with falsy values', () => {
@@ -1083,6 +1083,87 @@ describe('ProseWriter', () => {
       expect(plain).toContain('const x = 1;');
       expect(plain).not.toContain('<hidden>');
       expect(plain).not.toContain('```');
+    });
+  });
+
+  describe('static methods on write', () => {
+    it('heading', () => {
+      expect(write.heading(2, 'Title').toString()).toBe(
+        write('').heading(2, 'Title').toString(),
+      );
+    });
+
+    it('blockquote', () => {
+      expect(write.blockquote('line1', 'line2').toString()).toBe(
+        write('').blockquote('line1', 'line2').toString(),
+      );
+    });
+
+    it('codeblock', () => {
+      expect(write.codeblock('js', 'const x = 1').toString()).toBe(
+        write('').codeblock('js', 'const x = 1').toString(),
+      );
+    });
+
+    it('json', () => {
+      expect(write.json({ a: 1 }).toString()).toBe(write('').json({ a: 1 }).toString());
+    });
+
+    it('yaml', () => {
+      expect(write.yaml({ a: 1 }).toString()).toBe(write('').yaml({ a: 1 }).toString());
+    });
+
+    it('definitions', () => {
+      expect(write.definitions({ term: 'def' }).toString()).toBe(
+        write('').definitions({ term: 'def' }).toString(),
+      );
+    });
+
+    it('section', () => {
+      expect(write.section('Sec', (w) => w.write('body')).toString()).toBe(
+        write('')
+          .section('Sec', (w) => w.write('body'))
+          .toString(),
+      );
+    });
+
+    it('tag', () => {
+      expect(write.tag('note', 'content').toString()).toBe(
+        write('').tag('note', 'content').toString(),
+      );
+    });
+
+    it('comment', () => {
+      expect(write.comment('a comment').toString()).toBe(
+        write('').comment('a comment').toString(),
+      );
+    });
+
+    it('raw', () => {
+      expect(write.raw('raw content').toString()).toBe(
+        write('').raw('raw content').toString(),
+      );
+    });
+
+    it('append', () => {
+      const other = write('appended');
+      expect(write.append(other).toString()).toBe(write('').append(other).toString());
+    });
+
+    it('when (truthy)', () => {
+      expect(write.when(true, (w) => w.write('yes')).toString()).toBe(
+        write('')
+          .when(true, (w) => w.write('yes'))
+          .toString(),
+      );
+    });
+
+    it('when (falsy)', () => {
+      expect(write.when(false, (w) => w.write('no')).toString()).toBe(
+        write('')
+          .when(false, (w) => w.write('no'))
+          .toString(),
+      );
     });
   });
 });

@@ -273,7 +273,7 @@ export class ProseWriter {
     }
 
     const p = this.padding;
-    this.parts.push(p + joined + '\n');
+    this.parts.push(p + joined.trim() + '\n');
     return this;
   }
 
@@ -1245,6 +1245,55 @@ const buildWrite = (safeMode: boolean) => {
       },
       schema: (schemaValue: unknown, options?: SchemaEmbedOptions): ProseWriter => {
         return createWriter().schema(schemaValue, options);
+      },
+      heading: (level: 1 | 2 | 3 | 4 | 5 | 6, ...content: string[]): ProseWriter => {
+        return createWriter().heading(level, ...content);
+      },
+      blockquote: (...lines: string[]): ProseWriter => {
+        return createWriter().blockquote(...lines);
+      },
+      codeblock: (
+        language: string,
+        content: string | ((writer: ProseWriter & InlineUtils) => void),
+      ): ProseWriter => {
+        return createWriter().codeblock(language, content);
+      },
+      json: (data: unknown, options?: ValidationOptions): ProseWriter => {
+        return createWriter().json(data, options);
+      },
+      yaml: (data: unknown, options?: ValidationOptions): ProseWriter => {
+        return createWriter().yaml(data, options);
+      },
+      definitions: (obj: Record<string, string>): ProseWriter => {
+        return createWriter().definitions(obj);
+      },
+      section: (
+        name: string,
+        builder: (writer: ProseWriter & InlineUtils) => void,
+        level?: 1 | 2 | 3 | 4 | 5 | 6,
+      ): ProseWriter => {
+        return createWriter().section(name, builder, level);
+      },
+      tag: (
+        name: string,
+        content: string | ProseWriter | ((writer: ProseWriter & InlineUtils) => void),
+      ): ProseWriter => {
+        return createWriter().tag(name, content);
+      },
+      comment: (content: string): ProseWriter => {
+        return createWriter().comment(content);
+      },
+      raw: (content: string): ProseWriter => {
+        return createWriter().raw(content);
+      },
+      append: (writer: ProseWriter): ProseWriter => {
+        return createWriter().append(writer);
+      },
+      when: (
+        condition: unknown,
+        builder: (writer: ProseWriter & InlineUtils) => void,
+      ): ProseWriter => {
+        return createWriter().when(condition, builder);
       },
     },
   );
