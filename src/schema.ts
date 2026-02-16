@@ -1,1 +1,1 @@
-export type { SchemaEmbedOptions } from './prose-writer';
+export type { SchemaEmbedOptions } from './prose-writer.js';
