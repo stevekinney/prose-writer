@@ -1,3 +1,3 @@
-import { write as baseWrite } from './prose-writer';
+import { write as baseWrite } from './prose-writer.js';
 
 export const write = baseWrite.safe;

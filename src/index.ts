@@ -1,1 +1,1 @@
-export { ProseWriter, write } from './prose-writer';
+export { ProseWriter, write } from './prose-writer.js';

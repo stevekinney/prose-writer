@@ -4,9 +4,9 @@ export type {
   ValidationIssue,
   ValidationOptions,
   ValidationResult,
-} from './prose-writer';
+} from './prose-writer.js';
 export {
   createJsonSchemaValidator,
   createYamlParserAdapter,
   ValidationError,
-} from './prose-writer';
+} from './prose-writer.js';
