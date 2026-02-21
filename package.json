@@ -1,6 +1,6 @@
 {
   "name": "prose-writer",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "A chainable TypeScript library for building formatted text and markdown strings",
   "keywords": [
     "markdown",
@@ -59,13 +59,14 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "build:types": "tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "check:dist-import-extensions": "bun run scripts/check-dist-import-extensions.ts",
     "clean": "rm -rf dist coverage .eslintcache",
     "dev": "bun --watch run src/index.ts",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "prepack": "bun run build",
+    "prepack": "bun run build && bun run check:dist-import-extensions",
     "prepare": "husky",
     "prepublishOnly": "bun run validate",
     "start": "bun run src/index.ts",
