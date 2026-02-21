@@ -1,6 +1,6 @@
 {
   "name": "prose-writer",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "A chainable TypeScript library for building formatted text and markdown strings",
   "keywords": [
     "markdown",
@@ -12,6 +12,10 @@
     "chainable",
     "builder"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stevekinney/prose-writer"
+  },
   "license": "MIT",
   "author": "",
   "sideEffects": false,
